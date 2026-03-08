@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Electricity Price Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #0a0e17;
+    --surface: #111827;
+    --border:  #1e2d40;
+    --accent:  #00d4ff;
+    --yellow:  #f5c518;
+    --green:   #22c55e;
+    --red:     #ef4444;
+    --muted:   #4b5563;
+    --text:    #e2e8f0;
+    --subtext: #94a3b8;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    min-height: 100vh;
+  }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 18px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(10,14,23,0.95);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(8px);
+  }
+
+  .logo {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  .logo span { color: var(--subtext); }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .refresh-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--subtext);
+    padding: 6px 16px;
+    border-radius: 2px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .refresh-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .refresh-btn:disabled {
+    border-color: var(--accent);
+    color: var(--accent);
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+  .refresh-btn.spinning {
+    animation: spin-border 0.8s linear infinite;
+  }
+  @keyframes spin-border {
+    0%   { border-color: var(--accent); color: var(--accent); opacity: 1; }
+    50%  { opacity: 0.4; }
+    100% { border-color: var(--accent); color: var(--accent); opacity: 1; }
+  }
+
+  .status-dot {
+    width: 8px; height: 8px;
+    background: var(--green);
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 8px;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.3; }
+  }
+
+  .live-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--subtext);
+    letter-spacing: 0.1em;
+  }
+
+  .source-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    padding: 3px 8px;
+    border-radius: 2px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .source-badge.real {
+    border-color: var(--green);
+    color: var(--green);
+  }
+  .source-badge.mock {
+    border-color: var(--yellow);
+    color: var(--yellow);
+  }
+
+  main {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 40px;
+  }
+
+  .page-title {
+    font-size: 11px;
+    font-family: 'IBM Plex Mono', monospace;
+    letter-spacing: 0.2em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  h1 {
+    font-size: 28px;
+    font-weight: 300;
+    color: var(--text);
+    margin-bottom: 32px;
+    letter-spacing: -0.5px;
+  }
+  h1 strong { font-weight: 500; color: var(--accent); }
+
+  .controls {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 32px;
+    flex-wrap: wrap;
+  }
+
+  .country-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--subtext);
+    padding: 7px 18px;
+    border-radius: 2px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .country-btn:hover        { border-color: var(--accent); color: var(--accent); }
+  .country-btn.active       { background: var(--accent); border-color: var(--accent); color: #000; }
+
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 20px 22px;
+    position: relative;
+    overflow: hidden;
+  }
+  .kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent);
+    opacity: 0.6;
+  }
+  .kpi-card.red::before    { background: var(--red); }
+  .kpi-card.green::before  { background: var(--green); }
+  .kpi-card.yellow::before { background: var(--yellow); }
+
+  .kpi-label {
+    font-size: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .kpi-value {
+    font-size: 26px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1;
+  }
+  .kpi-unit {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--subtext);
+    margin-left: 4px;
+  }
+  .kpi-sub {
+    font-size: 11px;
+    color: var(--subtext);
+    margin-top: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .grid-3 {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 22px 24px;
+  }
+  .chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  .chart-title {
+    font-size: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    letter-spacing: 0.18em;
+    color: var(--subtext);
+    text-transform: uppercase;
+  }
+  .chart-tag {
+    font-size: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 2px 8px;
+    border-radius: 2px;
+  }
+
+  .chart-wrap    { position: relative; height: 220px; }
+  .chart-wrap-sm { position: relative; height: 200px; }
+
+  .spike-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .spike-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: rgba(239,68,68,0.08);
+    border: 1px solid rgba(239,68,68,0.2);
+    border-radius: 2px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text);
+  }
+  .spike-item .spike-price { color: var(--red); font-weight: 600; }
+
+  .no-spikes {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--green);
+    text-align: center;
+    padding: 20px;
+  }
+  .no-data {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    text-align: center;
+    padding: 20px;
+  }
+
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+  }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 20px 40px;
+    margin-top: 40px;
+    font-size: 11px;
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    letter-spacing: 0.05em;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Electricity<span>/</span>Price Tracker</div>
+  <div class="header-right">
+    <button class="refresh-btn" id="refreshBtn" onclick="manualRefresh()">REFRESH</button>
+    <div id="sourceBadge" class="source-badge">...</div>
+    <div class="live-badge"><span class="status-dot"></span>LIVE DATA</div>
+  </div>
+</header>
+
+<main>
+  <div class="page-title">Energy Market Analytics</div>
+  <h1>European <strong>Electricity</strong> Markets</h1>
+
+  <div class="controls">
+    <button class="country-btn active" data-country="DE">Germany</button>
+    <button class="country-btn" data-country="FR">France</button>
+    <button class="country-btn" data-country="IT">Italy</button>
+    <button class="country-btn" data-country="ES">Spain</button>
+    <button class="country-btn" data-country="PL">Poland</button>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi-card">
+      <div class="kpi-label">Current Price</div>
+      <div class="kpi-value" id="kpi-current">--<span class="kpi-unit">EUR/MWh</span></div>
+      <div class="kpi-sub" id="kpi-current-time">--</div>
+    </div>
+    <div class="kpi-card yellow">
+      <div class="kpi-label">24h Average</div>
+      <div class="kpi-value" id="kpi-avg">--<span class="kpi-unit">EUR/MWh</span></div>
+      <div class="kpi-sub" id="kpi-cv">CV: --%</div>
+    </div>
+    <div class="kpi-card red">
+      <div class="kpi-label">Volatility (StdDev)</div>
+      <div class="kpi-value" id="kpi-std">--<span class="kpi-unit">EUR/MWh</span></div>
+      <div class="kpi-sub" id="kpi-maxmin">Max: -- / Min: --</div>
+    </div>
+    <div class="kpi-card green">
+      <div class="kpi-label">Renewable Ratio</div>
+      <div class="kpi-value" id="kpi-ren">--%</div>
+      <div class="kpi-sub">Solar + Wind + Hydro</div>
+    </div>
+  </div>
+
+  <div class="grid-3">
+    <div class="chart-card">
+      <div class="chart-header">
+        <div class="chart-title">Hourly Price Timeline</div>
+        <div class="chart-tag">24H</div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="priceChart"></canvas>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-header">
+        <div class="chart-title">Generation Mix</div>
+        <div class="chart-tag">LATEST</div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="genChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="chart-card">
+      <div class="chart-header">
+        <div class="chart-title">Country Comparison</div>
+        <div class="chart-tag">24H AVG</div>
+      </div>
+      <div class="chart-wrap-sm">
+        <canvas id="compChart"></canvas>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-header">
+        <div class="chart-title">Price Spike Alerts</div>
+        <div class="chart-tag">&gt;1.5x AVG</div>
+      </div>
+      <div id="spikeContainer" class="spike-list" style="max-height:200px;overflow-y:auto;">
+        <div class="loading">loading...</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <span>Fiyat: Energy-Charts API · Fraunhofer ISE &nbsp;|&nbsp; DE Üretim: SMARD · Bundesnetzagentur</span>
+  <span id="last-updated">Last updated: --</span>
+</footer>
+
+<script>
+const API = "";
+let activeCountry = "DE";
+let priceChart, genChart, compChart;
+
+const CHART_DEFAULTS = {
+  color:     "#94a3b8",
+  gridColor: "#1e2d40",
+  font:      "IBM Plex Mono"
+};
+
+function initCharts() {
+  Chart.defaults.color       = CHART_DEFAULTS.color;
+  Chart.defaults.font.family = CHART_DEFAULTS.font;
+  Chart.defaults.font.size   = 11;
+
+  priceChart = new Chart(document.getElementById("priceChart"), {
+    type: "line",
+    data: { labels: [], datasets: [{
+      label: "EUR/MWh",
+      data: [],
+      borderColor:     "#00d4ff",
+      backgroundColor: "rgba(0,212,255,0.07)",
+      borderWidth:  1.5,
+      pointRadius:  2,
+      pointHoverRadius: 4,
+      fill:    true,
+      tension: 0.3
+    }]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: CHART_DEFAULTS.gridColor }, ticks: { maxTicksLimit: 8 } },
+        y: { grid: { color: CHART_DEFAULTS.gridColor }, ticks: { callback: v => v + " €" } }
+      }
+    }
+  });
+
+  genChart = new Chart(document.getElementById("genChart"), {
+    type: "doughnut",
+    data: {
+      labels: ["Solar","Wind","Hydro","Coal","Gas","Nuclear"],
+      datasets: [{
+        data: [],
+        backgroundColor: ["#f5c518","#00d4ff","#3b82f6","#6b7280","#f97316","#a855f7"],
+        borderWidth: 0,
+        hoverBorderWidth: 2,
+        hoverBorderColor: "#0a0e17"
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: "right",
+          labels: { boxWidth: 10, padding: 14, font: { size: 10 } }
+        }
+      },
+      cutout: "65%"
+    }
+  });
+
+  compChart = new Chart(document.getElementById("compChart"), {
+    type: "bar",
+    data: { labels: [], datasets: [{
+      data: [],
+      backgroundColor: "rgba(0,212,255,0.15)",
+      borderColor:     "#00d4ff",
+      borderWidth:  1,
+      borderRadius: 1
+    }]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      indexAxis: "y",
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: CHART_DEFAULTS.gridColor }, ticks: { callback: v => v + " €" } },
+        y: { grid: { display: false } }
+      }
+    }
+  });
+}
+
+async function fetchJSON(path) {
+  try {
+    const r = await fetch(API + path);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch {
+    return null;
+  }
+}
+
+function updateSourceBadge(country) {
+  const badge = document.getElementById("sourceBadge");
+  // Tüm ülkeler gerçek veri — kaynak göster
+  const sources = {
+    DE: "SMARD + Energy-Charts",
+    FR: "Energy-Charts · Fraunhofer ISE",
+    IT: "Energy-Charts · Fraunhofer ISE",
+    ES: "Energy-Charts · Fraunhofer ISE",
+    PL: "Energy-Charts · Fraunhofer ISE",
+  };
+  badge.className   = "source-badge real";
+  badge.textContent = sources[country] || "Energy-Charts";
+}
+
+async function loadPrices(country) {
+  const data = await fetchJSON(`/api/prices/${country}`);
+  if (!data || !data.length) {
+    // Veri henüz yükleniyorsa bildir
+    document.getElementById("kpi-current").innerHTML = `--<span class="kpi-unit">EUR/MWh</span>`;
+    document.getElementById("kpi-current-time").textContent = "Veri yükleniyor...";
+    priceChart.data.labels = [];
+    priceChart.data.datasets[0].data = [];
+    priceChart.update();
+    return;
+  }
+
+  const labels = data.map(d => {
+    const t = new Date(d.time);
+    return t.getHours().toString().padStart(2, "0") + ":00";
+  });
+
+  priceChart.data.labels = labels;
+  priceChart.data.datasets[0].data = data.map(d => d.price);
+  priceChart.update();
+
+  const last = data[data.length - 1];
+  document.getElementById("kpi-current").innerHTML =
+    `${last.price.toFixed(1)}<span class="kpi-unit">EUR/MWh</span>`;
+  const t = new Date(last.time);
+  document.getElementById("kpi-current-time").textContent =
+    t.toLocaleString("en-GB", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" });
+}
+
+async function loadGeneration(country) {
+  const genCard = document.querySelector(".chart-card:has(#genChart)");
+  if (country !== "DE") {
+    // DE dışında generation mix yok
+    genChart.data.datasets[0].data = [];
+    genChart.update();
+    if (genCard) genCard.style.opacity = "0.35";
+    document.getElementById("kpi-ren").textContent = "--";
+    return;
+  }
+  if (genCard) genCard.style.opacity = "1";
+
+  const g = await fetchJSON(`/api/generation/${country}`);
+  if (!g || (!g.solar && !g.wind && !g.coal)) return;
+
+  genChart.data.datasets[0].data = [g.solar, g.wind, g.hydro, g.coal, g.gas, g.nuclear];
+  genChart.update();
+}
+
+async function loadVolatility(country) {
+  const v = await fetchJSON(`/api/volatility/${country}`);
+  if (!v || !v.avg_price) return;
+
+  document.getElementById("kpi-avg").innerHTML =
+    `${v.avg_price.toFixed(1)}<span class="kpi-unit">EUR/MWh</span>`;
+  document.getElementById("kpi-cv").textContent =
+    `CV: ${v.coefficient_of_variation}%`;
+  document.getElementById("kpi-std").innerHTML =
+    `${v.std_dev.toFixed(2)}<span class="kpi-unit">EUR/MWh</span>`;
+  document.getElementById("kpi-maxmin").textContent =
+    `Max: ${v.max_price.toFixed(1)} / Min: ${v.min_price.toFixed(1)}`;
+}
+
+async function loadRenewable(country) {
+  if (country !== "DE") {
+    document.getElementById("kpi-ren").textContent = "--";
+    return;
+  }
+  const r = await fetchJSON(`/api/renewable/${country}`);
+  document.getElementById("kpi-ren").textContent =
+    (r && r.renewable_ratio !== null && r.renewable_ratio !== undefined)
+      ? `${r.renewable_ratio}%` : "--%";
+}
+
+async function loadComparison() {
+  const data = await fetchJSON("/api/comparison");
+  if (!data || !data.length) return;
+
+  compChart.data.labels = data.map(d => d.country);
+  compChart.data.datasets[0].data = data.map(d => parseFloat(d.avg_price).toFixed(2));
+  compChart.update();
+}
+
+async function loadSpikes(country) {
+  const container = document.getElementById("spikeContainer");
+  container.innerHTML = '<div class="loading">loading...</div>';
+
+  const v = await fetchJSON(`/api/volatility/${country}`);
+  if (!v || !v.avg_price) {
+    container.innerHTML = '<div class="no-data">No data available</div>';
+    return;
+  }
+
+  const prices = await fetchJSON(`/api/prices/${country}`);
+  if (!prices || !prices.length) {
+    container.innerHTML = '<div class="no-data">No price data</div>';
+    return;
+  }
+
+  const avg    = v.avg_price;
+  const spikes = prices.filter(d => d.price > avg * 1.5);
+
+  if (!spikes.length) {
+    container.innerHTML = '<div class="no-spikes">No spikes detected in last 24h</div>';
+    return;
+  }
+
+  container.innerHTML = spikes.map(s => {
+    const t     = new Date(s.time);
+    const label = t.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    const ratio = (s.price / avg).toFixed(2);
+    return `<div class="spike-item">
+      <span>${label}</span>
+      <span class="spike-price">${s.price.toFixed(1)} EUR/MWh</span>
+      <span>${ratio}x avg</span>
+    </div>`;
+  }).join("");
+}
+
+async function refresh(country) {
+  updateSourceBadge(country);
+  await Promise.all([
+    loadPrices(country),
+    loadVolatility(country),
+    loadGeneration(country),
+    loadRenewable(country),
+    loadComparison(),
+    loadSpikes(country)
+  ]);
+  document.getElementById("last-updated").textContent =
+    "Last updated: " + new Date().toLocaleTimeString("en-GB");
+}
+
+async function manualRefresh() {
+  const btn = document.getElementById("refreshBtn");
+  btn.textContent = "LOADING...";
+  btn.classList.add("spinning");
+  btn.disabled = true;
+
+  await refresh(activeCountry);
+
+  btn.textContent = "REFRESH";
+  btn.classList.remove("spinning");
+  btn.disabled = false;
+}
+
+document.querySelectorAll(".country-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".country-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    activeCountry = btn.dataset.country;
+    refresh(activeCountry);
+  });
+});
+
+initCharts();
+refresh(activeCountry);
+setInterval(() => refresh(activeCountry), 60 * 1000);
+</script>
+</body>
+</html>
